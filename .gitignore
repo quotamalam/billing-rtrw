@@ -54,3 +54,17 @@ Thumbs.db
 .vscode/
 .idea/
 *.pptx
+
+# Secrets & runtime (DO NOT COMMIT)
+settings.json
+.database/*.db
+.database/*.db-*
+database.sqlite
+*.db
+*.db-shm
+*.db-wal
+data/wa-lid-map.json
+license.key
+.hwid
+auth_info_baileys/
+data/wwebjs_auth/
