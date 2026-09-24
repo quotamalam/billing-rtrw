@@ -696,4 +696,26 @@ function startCronJobs() {
   logger.info('[CRON] Semua tugas penjadwalan telah aktif.');
 }
 
+  // Sinkronisasi Nama ONU (OLT) - setiap 6 jam
+  cron.schedule('0 */6 * * *', async () => {
+    const enabled = getSetting('onu_name_sync_enabled', true);
+    if (!enabled) return;
+    const onuSyncService = require('./onuSyncService');
+    const oltService = require('./oltService');
+    logger.info('[CRON] Menjalankan sinkronisasi nama ONU di OLT');
+    try {
+      const olts = (oltService.getAllOlts() || []).filter((o) => o.is_active === 1 || o.is_active === true);
+      for (const olt of olts) {
+        try {
+          const summary = await onuSyncService.syncOnuCustomerNames(olt.id);
+          logger.info(`[CRON] Sync ONU ${olt.name}: total=${summary.total}, rename=${summary.renamed}, gagal=${summary.failed}, sama=${summary.same}, belum-match=${summary.unmatch}`);
+        } catch (err) {
+          logger.error(`[CRON] Sync ONU gagal untuk ${olt.name}: ${err.message}`);
+        }
+      }
+      logger.info('[CRON] Selesai sinkronisasi nama ONU');
+    } catch (e) {
+      logger.error(`[CRON] Error sinkronisasi nama ONU: ${e.message}`);
+    }
+  });
 module.exports = { startCronJobs };
