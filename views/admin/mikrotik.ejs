@@ -542,7 +542,11 @@
     loadFailed: "<%= t('admin.mikrotik.errors.load_failed', 'Gagal memuat data') %>",
     statusOnline: "<%= t('admin.mikrotik.status.online', 'Online') %>",
     statusOffline: "<%= t('admin.mikrotik.status.offline', 'Offline') %>",
-    statusDisabled: "<%= t('admin.mikrotik.status.disabled', 'Disabled') %>"
+    statusDisabled: "<%= t('admin.mikrotik.status.disabled', 'Disabled') %>",
+    reconnectTitle: "<%= t('admin.mikrotik.actions.reconnect', 'Reconnect') %>",
+    reconnectConfirm: "<%= t('admin.mikrotik.confirm.reconnect_session', 'Reconnect sesi PPPoE user ini? Sesi diputus lalu tersambung ulang otomatis.') %>",
+    reconnectFailed: "<%= t('admin.mikrotik.errors.reconnect_failed', 'Gagal reconnect sesi') %>",
+    reconnectSuccess: "<%= t('admin.mikrotik.status.reconnect_success', 'Sesi diputus, user akan tersambung ulang otomatis') %>"
   };
 
   function showTab(e, id) {
@@ -979,6 +983,7 @@
             <td>${active ? active.uptime : '-'}</td>
             <td>${statusHtml}</td>
             <td>
+              ${active ? `<button class="btn btn-w btn-icon btn-sm" title="${I18N.reconnectTitle}" onclick="reconnectSession(${i})"><i class="bi bi-arrow-repeat"></i></button>` : ''}
               <button class="btn btn-g btn-icon btn-sm" onclick="editSecret(${i})"><i class="bi bi-pencil"></i></button>
               <button class="btn btn-d btn-icon btn-sm" onclick="deleteSecret('${s.id}')"><i class="bi bi-trash"></i></button>
             </td>
@@ -1169,6 +1174,24 @@
     if(!confirm(I18N.deleteSecretConfirm)) return;
     const res = await fetch(`/admin/api/mikrotik/secrets/${id}/delete?routerId=${getRouterId()}`, { method: 'POST' });
     if(res.ok) loadSecrets(); else alert(I18N.deleteFailed);
+  }
+
+  async function reconnectSession(idx) {
+    const s = pppoeData[idx];
+    if (!s) return;
+    if (!confirm(I18N.reconnectConfirm + '\n\n' + s.name)) return;
+    try {
+      const res = await fetch(`/admin/api/mikrotik/active-pppoe/${encodeURIComponent(s.name)}/reconnect?routerId=${getRouterId()}`, { method: 'POST' });
+      if (res.ok) {
+        alert(I18N.reconnectSuccess + ': ' + s.name);
+        setTimeout(loadSecrets, 3000);
+        return;
+      }
+      const msg = await readApiErrorMessage(res, I18N.reconnectFailed);
+      alert(msg);
+    } catch (e) {
+      alert(String(e?.message || I18N.reconnectFailed));
+    }
   }
 
   // Hotspot Handlers

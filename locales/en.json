@@ -215,12 +215,14 @@
         "add_pppoe_profile": "Add PPPoE Profile",
         "edit_pppoe_profile": "Edit PPPoE Profile",
         "add_hotspot_profile": "Add Hotspot Profile",
-        "edit_hotspot_profile": "Edit Hotspot Profile"
+        "edit_hotspot_profile": "Edit Hotspot Profile",
+        "reconnect": "Reconnect"
       },
       "confirm": {
         "delete_secret": "Delete this secret?",
         "delete_hotspot_user": "Delete this hotspot user?",
-        "delete_profile": "Delete this profile?"
+        "delete_profile": "Delete this profile?",
+        "reconnect_session": "Reconnect this PPPoE session? It will be dropped and the client reconnects automatically."
       },
       "empty": {
         "secrets": "No secrets found",
@@ -229,12 +231,14 @@
       "errors": {
         "save_failed": "Failed to save",
         "delete_failed": "Failed to delete",
-        "load_failed": "Failed to load data"
+        "load_failed": "Failed to load data",
+        "reconnect_failed": "Failed to reconnect session"
       },
       "status": {
         "online": "Online",
         "offline": "Offline",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "reconnect_success": "Session dropped, client will reconnect automatically"
       }
     },
     "vouchers": {

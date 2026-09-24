@@ -145,6 +145,7 @@ function toCamelCaseKey(key) {
 
 function augmentRow(row) {
   if (!row || typeof row !== 'object') return row;
+  if (row.id === undefined && row['.id'] !== undefined) row.id = row['.id']; // RouterOS .id alias (fix edit/delete secret)
   for (const [k, v] of Object.entries(row)) {
     if (!k || k.startsWith('.') || k.includes('-') === false) continue;
     const camel = toCamelCaseKey(k);
@@ -668,6 +669,49 @@ async function deletePppoeSecret(id, routerId = null) {
   }
 }
 
+// Reconnect (kick) sesi PPPoE aktif berdasarkan username; client akan dial ulang otomatis
+// Catatan: pakai conn.api.send mentah karena routeros-client/node-routeros melempar
+// error "unknown reply: !empty" untuk query ber-hasil kosong di RouterOS 7.
+async function reconnectPppoeUser(username, routerId = null) {
+  let conn = null;
+  try {
+    conn = await getConnection(routerId);
+    let rows;
+    try {
+      rows = await withTimeout(
+        conn.api.send(['/ppp/active/print', '=.proplist=.id,name,address,uptime']),
+        15000,
+        'reconnectPppoeUser-find'
+      );
+    } catch (qErr) {
+      // RouterOS 7 membalas '!empty' bila tidak ada sesi aktif sama sekali
+      if (String(qErr && qErr.message || '').includes('!empty')) rows = [];
+      else throw qErr;
+    }
+    const uname = String(username || '').trim().toLowerCase();
+    const session = (Array.isArray(rows) ? rows : [])
+      .find(r => String(r.name || '').trim().toLowerCase() === uname);
+    if (!session) {
+      return { success: false, message: `Sesi aktif untuk ${username} tidak ditemukan (offline?)` };
+    }
+    const sid = session['.id'] || session.id;
+    if (!sid) throw new Error('Session ID tidak ditemukan');
+    await withTimeout(
+      conn.api.send(['/ppp/active/remove', '=numbers=' + sid]),
+      15000,
+      'reconnectPppoeUser-remove'
+    );
+    listCache.delete(cacheKey(routerId, 'pppoeActive'));
+    logger.info(`[MikroTik] Reconnect PPPoE: ${username} (session ${sid} di-kick)`);
+    return { success: true, username, sessionId: sid };
+  } catch (e) {
+    logger.error(`Error reconnecting PPPoE user ${username}:`, e);
+    throw e;
+  } finally {
+    if (conn && conn.api) conn.api.close();
+  }
+}
+
 async function createPppoeSecret({ username, password, profile, remoteAddress, routerId = null }) {
   let conn = null;
   try {
@@ -692,6 +736,49 @@ async function createPppoeSecret({ username, password, profile, remoteAddress, r
   } catch (e) {
     logger.error(`Error creating PPPoE secret for ${username}:`, e);
     throw e;
+  } finally {
+    if (conn && conn.api) conn.api.close();
+  }
+}
+
+
+async function addPppoeUser(username, password, profile, routerId = null, options = {}) {
+  return createPppoeSecret({ username, password, profile, remoteAddress: options.remoteAddress || "", routerId });
+}
+
+async function updatePppoeUser(username, data, routerId = null) {
+  let conn = null;
+  try {
+    conn = await getConnection(routerId);
+    const secretMenu = conn.client.menu("/ppp/secret");
+    const secrets = await secretMenu.where("name", username).where("service", "pppoe").get();
+    if (!secrets || secrets.length === 0) {
+      throw new Error(`PPPoE User ${username} not found in MikroTik`);
+    }
+    const secretId = secrets[0][".id"] || secrets[0].id;
+    if (!secretId) {
+      throw new Error(`PPPoE secret ID not found for user ${username}`);
+    }
+    return updatePppoeSecret(secretId, data, routerId);
+  } finally {
+    if (conn && conn.api) conn.api.close();
+  }
+}
+
+async function deletePppoeUser(username, routerId = null) {
+  let conn = null;
+  try {
+    conn = await getConnection(routerId);
+    const secretMenu = conn.client.menu("/ppp/secret");
+    const secrets = await secretMenu.where("name", username).where("service", "pppoe").get();
+    if (!secrets || secrets.length === 0) {
+      throw new Error(`PPPoE User ${username} not found in MikroTik`);
+    }
+    const secretId = secrets[0][".id"] || secrets[0].id;
+    if (!secretId) {
+      throw new Error(`PPPoE secret ID not found for user ${username}`);
+    }
+    return deletePppoeSecret(secretId, routerId);
   } finally {
     if (conn && conn.api) conn.api.close();
   }
@@ -2030,6 +2117,7 @@ module.exports = {
   createPppoeSecret,
   updatePppoeSecret,
   deletePppoeSecret,
+  reconnectPppoeUser,
   getHotspotUsers,
   addHotspotUser,
   updateHotspotUser,
@@ -2053,6 +2141,9 @@ module.exports = {
   deleteHotspotUserProfile,
   getBackup,
   kickPppoeUser,
+  addPppoeUser,
+  updatePppoeUser,
+  deletePppoeUser,
   kickHotspotUser,
   getSystemIdentity,
   getSystemResource,

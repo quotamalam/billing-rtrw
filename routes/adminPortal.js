@@ -5597,6 +5597,14 @@ router.get('/api/mikrotik/active-pppoe', requireAdmin, async (req, res) => {
   try { res.json(await mikrotikService.getPppoeActive(req.query.routerId)); } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.post('/api/mikrotik/active-pppoe/:username/reconnect', requireAdmin, async (req, res) => {
+  try {
+    const result = await mikrotikService.reconnectPppoeUser(req.params.username, req.query.routerId);
+    if (!result.success) return res.status(404).json(result);
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.get('/api/mikrotik/active-hotspot', requireAdmin, async (req, res) => {
   try { res.json(await mikrotikService.getHotspotActive(req.query.routerId)); } catch (e) { res.status(500).json({ error: e.message }); }
 });

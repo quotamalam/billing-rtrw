@@ -215,12 +215,14 @@
         "add_pppoe_profile": "Tambah PPPoE Profile",
         "edit_pppoe_profile": "Edit PPPoE Profile",
         "add_hotspot_profile": "Tambah Hotspot Profile",
-        "edit_hotspot_profile": "Edit Hotspot Profile"
+        "edit_hotspot_profile": "Edit Hotspot Profile",
+        "reconnect": "Reconnect"
       },
       "confirm": {
         "delete_secret": "Hapus secret ini?",
         "delete_hotspot_user": "Hapus user hotspot ini?",
-        "delete_profile": "Hapus profile ini?"
+        "delete_profile": "Hapus profile ini?",
+        "reconnect_session": "Reconnect sesi PPPoE user ini? Sesi diputus lalu tersambung ulang otomatis."
       },
       "empty": {
         "secrets": "Tidak ada data secret",
@@ -229,12 +231,14 @@
       "errors": {
         "save_failed": "Gagal menyimpan",
         "delete_failed": "Gagal menghapus",
-        "load_failed": "Gagal memuat data"
+        "load_failed": "Gagal memuat data",
+        "reconnect_failed": "Gagal reconnect sesi"
       },
       "status": {
         "online": "Online",
         "offline": "Offline",
-        "disabled": "Disabled"
+        "disabled": "Disabled",
+        "reconnect_success": "Sesi diputus, user akan tersambung ulang otomatis"
       }
     },
     "vouchers": {
