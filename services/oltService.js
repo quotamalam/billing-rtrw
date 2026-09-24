@@ -1958,6 +1958,7 @@ function enrichOnusWithCustomerData(onus) {
     const pppoeMap = new Map();
     const macMap = new Map();
     const tagMap = new Map();
+    const tagTailMap = new Map();
     const nameMap = new Map();
 
     for (const c of custs) {
@@ -1966,7 +1967,13 @@ function enrichOnusWithCustomerData(onus) {
         const rawMac = String(c.mac_address).replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
         if (rawMac) macMap.set(rawMac, c);
       }
-      if (c.genieacs_tag) tagMap.set(String(c.genieacs_tag).trim().toLowerCase(), c);
+      if (c.genieacs_tag) {
+        const tagRaw = String(c.genieacs_tag).trim();
+        tagMap.set(tagRaw.toLowerCase(), c);
+        const tagParts = tagRaw.split('-');
+        const tailNorm = String(tagParts[tagParts.length - 1] || '').replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+        if (tailNorm) tagTailMap.set(tailNorm, c);
+      }
       if (c.name) nameMap.set(String(c.name).trim().toLowerCase(), c);
     }
 
@@ -1977,6 +1984,7 @@ function enrichOnusWithCustomerData(onus) {
       let matched = null;
       if (snClean && macMap.has(snClean)) matched = macMap.get(snClean);
       else if (snClean && tagMap.has(snClean)) matched = tagMap.get(snClean);
+      else if (snClean && tagTailMap.has(snClean)) matched = tagTailMap.get(snClean);
       else if (nameClean && pppoeMap.has(nameClean)) matched = pppoeMap.get(nameClean);
       else if (nameClean && nameMap.has(nameClean)) matched = nameMap.get(nameClean);
       else if (snClean.length >= 6) {
@@ -2036,6 +2044,76 @@ function decodeOltSnmpIndex(brand, index) {
   }
 }
 
+
+async function hiosoWebFetch(olt, url, options) {
+  const baseUrl = url.startsWith('http') ? url : `http://${olt.host || '127.0.0.1'}${url}`;
+  const headers = Object.assign(
+    { Authorization: 'Basic ' + Buffer.from(`${olt.web_user || 'admin'}:${olt.web_password || ''}`).toString('base64') },
+    (options && options.headers) || {}
+  );
+  return await fetch(baseUrl, Object.assign({}, options, { headers }, { signal: AbortSignal.timeout(15000) }));
+}
+
+async function hiosoWebOnuIds(olt, index) {
+  let port, onuId;
+  const s = String(index || '');
+  if (/[./:]/.test(s)) {
+    const parts = s.split(/[/:.]/).filter(Boolean);
+    port = parts[parts.length - 2];
+    onuId = parts[parts.length - 1];
+  } else {
+    const parsed = decodeOltSnmpIndex('hioso', index);
+    port = parsed.port;
+    onuId = parsed.onuId;
+  }
+  return { pon: `0/1/${port}`, onuno: `0/1/${port}:${onuId}` };
+}
+
+async function hiosoWebCurrentName(olt, pon, onuno) {
+  const res = await hiosoWebFetch(olt, `/onuConfigOnuList.asp?oltponno=${pon}`);
+  if (!res.ok) throw new Error(`Web OLT tidak merespons (HTTP ${res.status})`);
+  const html = await res.text();
+  const esc = onuno.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = html.match(new RegExp(`'${esc}','([^']*)'`));
+  return m ? m[1] : null;
+}
+
+async function renameOnuHioso(olt, index, newName) {
+  const { pon, onuno } = await hiosoWebOnuIds(olt, index);
+  const name30 = String(newName).slice(0, 30);
+  const body = new URLSearchParams({ onuId: onuno, onuName: name30, onuOperation: 'nonOp' }).toString();
+  const res = await hiosoWebFetch(olt, '/goform/setOnu', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    redirect: 'manual'
+  });
+  if (res.status !== 302 && res.status !== 200) {
+    throw new Error(`Web OLT menolak rename (HTTP ${res.status} - cek web_user/web_password OLT)`);
+  }
+  const current = await hiosoWebCurrentName(olt, pon, onuno);
+  if (current !== null && current !== name30) {
+    throw new Error(`Nama ONU belum berubah (masih "${current}")`);
+  }
+  return { onuno, verified: true };
+}
+
+async function rebootOnuHioso(olt, index) {
+  const { pon, onuno } = await hiosoWebOnuIds(olt, index);
+  const current = await hiosoWebCurrentName(olt, pon, onuno);
+  const body = new URLSearchParams({ onuId: onuno, onuName: (current || '').slice(0, 30), onuOperation: 'rebootOp' }).toString();
+  const res = await hiosoWebFetch(olt, '/goform/setOnu', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+    redirect: 'manual'
+  });
+  if (res.status !== 302 && res.status !== 200) {
+    throw new Error(`Web OLT menolak reboot (HTTP ${res.status})`);
+  }
+  return { onuno, rebooted: true };
+}
+
 async function rebootOnu(oltId, index) {
   const olt = getOltById(oltId);
   if (!olt) throw new Error('OLT tidak ditemukan');
@@ -2056,11 +2134,15 @@ async function rebootOnu(oltId, index) {
     return await onuProvisionSvc.rebootONU(oltConfig, olt.brand, parsed);
   }
 
+  if (brand === 'hioso') {
+    return await rebootOnuHioso(olt, index);
+  }
+
   const community = olt.snmp_community || 'public';
   const session = snmp.createSession(olt.host, community, { port: olt.snmp_port || 161, version: snmp.Version2c });
   const oid = `1.3.6.1.4.1.25355.3.2.6.3.2.1.40.${index}`;
   return new Promise((resolve, reject) => {
-    session.set([{ oid, type: snmp.ASN1.Integer, value: 1 }], (error) => {
+    session.set([{ oid, type: snmp.ObjectType.Integer, value: 1 }], (error) => {
       session.close();
       if (error) reject(error);
       else resolve(true);
@@ -2089,11 +2171,15 @@ async function renameOnu(oltId, index, newName) {
     return await onuProvisionSvc.renameONU(oltConfig, olt.brand, parsed);
   }
 
+  if (brand === 'hioso') {
+    return await renameOnuHioso(olt, index, newName);
+  }
+
   const community = olt.snmp_community || 'public';
   const session = snmp.createSession(olt.host, community, { port: olt.snmp_port || 161, version: snmp.Version2c });
   const oid = `1.3.6.1.4.1.25355.3.2.6.3.2.1.37.${index}`;
   return new Promise((resolve, reject) => {
-    session.set([{ oid, type: snmp.ASN1.OctetString, value: newName }], (error) => {
+    session.set([{ oid, type: snmp.ObjectType.OctetString, value: newName }], (error) => {
       session.close();
       if (error) reject(error);
       else resolve(true);
