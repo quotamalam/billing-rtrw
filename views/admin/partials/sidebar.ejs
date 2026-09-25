@@ -46,14 +46,6 @@ document.addEventListener('DOMContentLoaded', () => {
   updateThemeToggleIcons(theme);
 });
 
-function speedtestDirectUrl() {
-  var host = window.location.hostname;
-  var https = window.location.protocol === 'https:';
-  return (https ? 'https://' : 'http://') + host + (https ? ':18443' : ':18080');
-}
-function openSpeedTest() {
-  window.open(speedtestDirectUrl(), '_blank', 'noopener');
-}
 </script>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 <aside class="sidebar" id="sidebar">
@@ -110,7 +102,7 @@ function openSpeedTest() {
     <% }) %>
 
     <div class="sb-section">KONTROL</div>
-    <a href="#" onclick="event.preventDefault(); openSpeedTest();" class="sb-item">
+    <a href="/speedtest/" target="_blank" rel="noopener" class="sb-item">
       <i class="bi bi-speedometer2"></i><span>Speed Test</span>
     </a>
     <a href="/admin/sidebar-settings" class="sb-item <%= activePage==='sidebar_settings' ? 'active' : '' %>">
