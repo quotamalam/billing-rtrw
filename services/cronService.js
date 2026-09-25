@@ -696,34 +696,24 @@ function startCronJobs() {
   logger.info('[CRON] Semua tugas penjadwalan telah aktif.');
 }
 
-  // Sinkronisasi Nama ONU (OLT) - setiap 6 jam
+  // Sinkronisasi ONU: auto-isi MAC pelanggan + rename nama ONU - setiap 6 jam
   cron.schedule('0 */6 * * *', async () => {
-    const enabled = getSetting('onu_name_sync_enabled', true);
-    if (!enabled) return;
+    const nameEnabled = getSetting('onu_name_sync_enabled', true);
+    const macEnabled = getSetting('customer_mac_autofill_enabled', true);
+    if (!nameEnabled && !macEnabled) return;
     const onuSyncService = require('./onuSyncService');
-    const oltService = require('./oltService');
-    if (getSetting('customer_mac_autofill_enabled', true)) {
-      try {
-        const macSummary = await onuSyncService.syncCustomerMacFromPppoe();
-        logger.info(`[CRON] Auto-isi mac_address: total=${macSummary.total}, diisi=${macSummary.filled}, sudah-ada=${macSummary.skipped}, tanpa-pelanggan=${macSummary.noCustomer}`);
-      } catch (e) {
-        logger.error(`[CRON] Gagal auto-isi mac_address: ${e.message}`);
-      }
-    }
-    logger.info('[CRON] Menjalankan sinkronisasi nama ONU di OLT');
+    logger.info('[CRON] Menjalankan sinkronisasi ONU (nama + mac pelanggan)');
     try {
-      const olts = (oltService.getAllOlts() || []).filter((o) => o.is_active === 1 || o.is_active === true);
-      for (const olt of olts) {
-        try {
-          const summary = await onuSyncService.syncOnuCustomerNames(olt.id);
-          logger.info(`[CRON] Sync ONU ${olt.name}: total=${summary.total}, rename=${summary.renamed}, gagal=${summary.failed}, sama=${summary.same}, belum-match=${summary.unmatch}`);
-        } catch (err) {
-          logger.error(`[CRON] Sync ONU gagal untuk ${olt.name}: ${err.message}`);
-        }
+      const res = await onuSyncService.runSyncOnu({ skipFill: !macEnabled, skipNames: !nameEnabled });
+      if (res.mac && !res.mac.skipped) {
+        logger.info(`[CRON] Auto-isi mac_address: total=${res.mac.total}, diisi=${res.mac.filled}, diperbarui=${res.mac.refreshed}, bukan-ONU=${res.mac.skippedNonOnu}, tanpa-pelanggan=${res.mac.noCustomer}, konflik=${res.mac.conflict}`);
       }
-      logger.info('[CRON] Selesai sinkronisasi nama ONU');
+      for (const s of res.olts || []) {
+        logger.info(`[CRON] Sync ONU ${s.oltName}: total=${s.total}, rename=${s.renamed}, gagal=${s.failed}, sama=${s.same}, belum-match=${s.unmatch}`);
+      }
+      logger.info('[CRON] Selesai sinkronisasi ONU');
     } catch (e) {
-      logger.error(`[CRON] Error sinkronisasi nama ONU: ${e.message}`);
+      logger.error(`[CRON] Error sinkronisasi ONU: ${e.message}`);
     }
   });
 module.exports = { startCronJobs };
