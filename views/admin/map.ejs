@@ -463,7 +463,16 @@
       font-size: 11px; font-weight: 900; line-height: 16px; text-align: center;
       border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
-    .cable-moving-dot { pointer-events: none; }
+    .map-dot { border-radius: 50%; }
+    .map-dot-main {
+      width: 12px; height: 12px; margin: 1px;
+      background: #ffffff; border: 2px solid #10b981;
+      box-shadow: 0 0 8px rgba(16,185,129,0.95);
+      animation: dotPulse 1.2s ease-in-out infinite;
+    }
+    .map-dot-trail { width: 9px; height: 9px; margin: 2.5px; background: rgba(52,211,153,0.55); }
+    .map-dot-trail2 { width: 6px; height: 6px; margin: 4px; background: rgba(16,185,129,0.32); }
+    @keyframes dotPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(0.7); } }
 
     /* Tabbed Data Panel (ONU & ODP) */
     .data-tabs-panel {
@@ -1185,82 +1194,84 @@
   });
 
   // ─── LIVE PPPoE STATUS (warna marker + radar isolir) ───
-  function removeMovingDot(custId) {
-    const entry = customerMap[custId];
-    if (entry && entry.movingDot) {
-      try { entry.movingDot.remove(); } catch (e) {}
-      entry.movingDot = null;
-    }
-  }
+  let _dotRaf = null;
+  let _dotLast = 0;
 
-  function removeCableCross(custId) {
-    const entry = customerMap[custId];
-    if (entry && entry.crossMarker) {
-      map.removeLayer(entry.crossMarker);
-      entry.crossMarker = null;
-    }
-  }
-
-  // Tanda silang merah di tengah garis (dipakai saat PPPoE offline)
-  function ensureCableCross(custId, poly) {
-    const entry = customerMap[custId];
-    if (!entry || entry.crossMarker) return;
-    let pts = poly.getLatLngs();
-    if (Array.isArray(pts[0])) pts = pts[0];
-    const mid = pts[Math.floor(pts.length / 2)] || pts[0];
-    if (!mid) return;
-    entry.crossMarker = L.marker(mid, {
-      icon: L.divIcon({ className: 'cable-cross', html: '<div class="cable-cross-badge">\u2715</div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
-      interactive: false
-    }).addTo(map);
-  }
-
-  // Satu titik SVG yang bergerak mengikuti path (mpath)
-  function svgDot(pid, r, fill, opacity, durSec, beginSec, glow) {
-    const ns = 'http://www.w3.org/2000/svg';
-    const c = document.createElementNS(ns, 'circle');
-    c.setAttribute('r', String(r));
-    c.setAttribute('fill', fill);
-    if (opacity != null) c.setAttribute('opacity', String(opacity));
-    if (glow) {
-      c.setAttribute('stroke', '#10b981');
-      c.setAttribute('stroke-width', '2');
-      c.setAttribute('filter', 'drop-shadow(0 0 6px rgba(16,185,129,0.95))');
-    }
-    c.setAttribute('class', 'cable-moving-dot');
-    const am = document.createElementNS(ns, 'animateMotion');
-    am.setAttribute('dur', durSec + 's');
-    if (beginSec) am.setAttribute('begin', beginSec + 's');
-    am.setAttribute('repeatCount', 'indefinite');
-    const mp = document.createElementNS(ns, 'mpath');
-    mp.setAttribute('href', '#' + pid);
-    mp.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + pid);
-    am.appendChild(mp);
-    c.appendChild(am);
-    return c;
-  }
-
-  // Rombongan titik bergerak (ekor + inti) - kecepatan menyesuaikan panjang garis
-  function ensureMovingDot(custId, poly) {
+  function removeDotMarkers(custId) {
     const entry = customerMap[custId];
     if (!entry) return;
-    const pathEl = poly.getElement && poly.getElement();
-    if (!pathEl || !pathEl.ownerSVGElement) return;
-    const pid = 'cable-path-' + custId;
-    if (pathEl.id !== pid) pathEl.id = pid;
-    if (entry.movingDot && entry.movingDot.ownerSVGElement === pathEl.ownerSVGElement) return;
-    removeMovingDot(custId);
-    let len = 0;
-    try { len = pathEl.getTotalLength ? pathEl.getTotalLength() : 0; } catch (e) {}
-    const dur = Math.min(6, Math.max(1.4, len / 110));
-    const ns = 'http://www.w3.org/2000/svg';
-    const g = document.createElementNS(ns, 'g');
-    g.setAttribute('class', 'cable-moving-group');
-    g.appendChild(svgDot(pid, 3, '#10b981', 0.32, dur, -(dur * 0.34), false));
-    g.appendChild(svgDot(pid, 3.6, '#34d399', 0.55, dur, -(dur * 0.17), false));
-    g.appendChild(svgDot(pid, 4.8, '#ffffff', 1, dur, 0, true));
-    pathEl.ownerSVGElement.appendChild(g);
-    entry.movingDot = g;
+    if (entry.dotMarkers) {
+      entry.dotMarkers.forEach(function (m) { try { map.removeLayer(m); } catch (e) {} });
+      entry.dotMarkers = null;
+    }
+    entry.pathMetrics = null;
+  }
+
+  function buildPathMetrics(pts) {
+    const cum = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += map.distance(pts[i - 1], pts[i]);
+      cum.push(total);
+    }
+    return { pts: pts, cum: cum, total: total };
+  }
+
+  function pointAt(metrics, frac) {
+    const pts = metrics.pts, cum = metrics.cum, total = metrics.total;
+    let d = frac * total;
+    d = ((d % total) + total) % total;
+    let i = 1;
+    while (i < cum.length && cum[i] < d) i++;
+    if (i >= pts.length) return pts[pts.length - 1];
+    const seg = (cum[i] - cum[i - 1]) || 1;
+    const r = (d - cum[i - 1]) / seg;
+    const a = pts[i - 1], b = pts[i];
+    return L.latLng(a.lat + (b.lat - a.lat) * r, a.lng + (b.lng - a.lng) * r);
+  }
+
+  function animateDots() {
+    const now = Date.now();
+    if (now - _dotLast >= 33) {
+      _dotLast = now;
+      Object.keys(customerMap).forEach(function (id) {
+        const e = customerMap[id];
+        if (!e || !e.isOnline || !e.pathMetrics || !e.dotMarkers) return;
+        const base = (now % e.dotDuration) / e.dotDuration;
+        for (let i = 0; i < e.dotMarkers.length; i++) {
+          e.dotMarkers[i].setLatLng(pointAt(e.pathMetrics, base + (e.dotOffsets[i] || 0)));
+        }
+      });
+    }
+    _dotRaf = requestAnimationFrame(animateDots);
+  }
+
+  function startDotLoop() {
+    if (_dotRaf == null) { _dotLast = 0; _dotRaf = requestAnimationFrame(animateDots); }
+  }
+
+  // Titik bergerak (inti + 2 ekor) sepanjang alur kabel - dipakai saat PPPoE online
+  function buildDotMarkers(custId, poly) {
+    const entry = customerMap[custId];
+    if (!entry || entry.dotMarkers) return;
+    let pts = poly.getLatLngs();
+    if (Array.isArray(pts[0])) pts = pts[0];
+    if (!pts || pts.length < 2) return;
+    const metrics = buildPathMetrics(pts);
+    if (!metrics.total) return;
+    entry.pathMetrics = metrics;
+    entry.dotDuration = Math.min(8000, Math.max(2500, metrics.total * 20));
+    entry.dotOffsets = [0, -0.12, -0.24];
+    const makeIcon = function (cls) {
+      return L.divIcon({ className: '', html: '<div class="map-dot ' + cls + '"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
+    };
+    entry.dotMarkers = [
+      L.marker(pts[0], { icon: makeIcon('map-dot-main'), interactive: false, zIndexOffset: 600 }),
+      L.marker(pts[0], { icon: makeIcon('map-dot-trail'), interactive: false, zIndexOffset: 599 }),
+      L.marker(pts[0], { icon: makeIcon('map-dot-trail map-dot-trail2'), interactive: false, zIndexOffset: 598 })
+    ];
+    entry.dotMarkers.forEach(function (m) { m.addTo(map); });
+    startDotLoop();
   }
 
   async function refreshOnuLiveStatus() {
@@ -1288,13 +1299,11 @@
           if (isOnline) {
             poly.setStyle({ color: '#10b981', dashArray: null, opacity: 0.95 });
             if (el) el.classList.remove('blinking-line');
-            removeCableCross(cust.id);
-            ensureMovingDot(cust.id, poly);
+            buildDotMarkers(cust.id, poly);
           } else {
-            poly.setStyle({ color: '#ef4444', dashArray: null, opacity: 0.9 });
+            poly.setStyle({ color: '#ef4444', dashArray: '7, 7', opacity: 0.9 });
             if (el) el.classList.add('blinking-line');
-            removeMovingDot(cust.id);
-            ensureCableCross(cust.id, poly);
+            removeDotMarkers(cust.id);
           }
         }
       });
