@@ -50,9 +50,6 @@ if (typeof ensureDefaultSettings === 'function') {
 // Inisialisasi aplikasi Express
 const app = express();
 
-// LibreSpeed self-hosted (dipasang sebelum body-parser agar upload besar tidak dibuffer)
-app.use('/speedtest', require('./routes/speedtest'));
-
 const isProduction = process.env.NODE_ENV === 'production';
 const cookieSecure = getSetting('cookie_secure', isProduction);
 const trustProxySetting = getSetting('trust_proxy', true);
