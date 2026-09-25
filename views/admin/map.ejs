@@ -372,6 +372,34 @@
       flex-shrink: 0;
       z-index: 3;
     }
+
+    /* Status ODP: online = centang (warna tetap kuning), offline = silang (pin merah) */
+    .odp-marker-node .odp-marker-pin { position: relative; }
+    .odp-marker-node.odp-offline .odp-marker-pin {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.5), 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .odp-marker-node.odp-online .odp-marker-pin::before,
+    .odp-marker-node.odp-offline .odp-marker-pin::before {
+      position: absolute;
+      top: -7px; right: -7px;
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      font-size: 9px; line-height: 15px; text-align: center; font-weight: 900;
+      border: 1.5px solid #ffffff;
+      z-index: 6;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+    }
+    .odp-marker-node.odp-online .odp-marker-pin::before {
+      content: '\2713';
+      background: #16a34a;
+      color: #ffffff;
+    }
+    .odp-marker-node.odp-offline .odp-marker-pin::before {
+      content: '\2715';
+      background: #ffffff;
+      color: #dc2626;
+    }
     .odp-marker-label {
       position: absolute;
       top: 28px;
@@ -1306,6 +1334,24 @@
             removeDotMarkers(cust.id);
           }
         }
+      });
+      // Status ODP: online bila minimal 1 pelanggan terhubung online; offline bila semua offline
+      const odpAgg = {};
+      customers.forEach((cust) => {
+        if (!cust.odp_id) return;
+        const uname2 = String(cust.pppoe_username || '').trim().toLowerCase();
+        const isOn = !!uname2 && onlineSet.has(uname2);
+        if (!odpAgg[cust.odp_id]) odpAgg[cust.odp_id] = { total: 0, online: 0 };
+        odpAgg[cust.odp_id].total++;
+        if (isOn) odpAgg[cust.odp_id].online++;
+      });
+      odps.forEach((odp) => {
+        const oNode = document.getElementById('odp-node-' + odp.id);
+        if (!oNode) return;
+        const agg = odpAgg[odp.id];
+        const odpOnline = !!(agg && agg.online > 0);
+        oNode.classList.toggle('odp-online', odpOnline);
+        oNode.classList.toggle('odp-offline', !odpOnline);
       });
     } catch (e) { /* diamkan */ }
   }
