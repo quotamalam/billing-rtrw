@@ -505,7 +505,7 @@ router.get('/api/devices', requireTechSession, async (req, res) => {
       const pu = String(c.pppoe_username || '').trim().toLowerCase();
       const tg = String(c.genieacs_tag || '').trim();
       if (pu) byPppoe.set(pu, c);
-      if (tg) byTag.set(tg, c);
+      if (tg) byTag.set(tg.toLowerCase(), c);
     }
 
     const result = await customerDevice.listAllDevices(999999, acs);
@@ -519,9 +519,13 @@ router.get('/api/devices', requireTechSession, async (req, res) => {
       const pu = String(mapped.pppoeUsername || '').trim();
       const puKey = pu && pu !== 'N/A' ? pu.toLowerCase() : '';
       let customer = puKey ? byPppoe.get(puKey) : null;
+      if (!customer) {
+        const idKey = String(d._id || '').trim().toLowerCase();
+        if (idKey) customer = byTag.get(idKey) || null;
+      }
       if (!customer && Array.isArray(d._tags)) {
         for (const t of d._tags) {
-          const hit = byTag.get(String(t || '').trim());
+          const hit = byTag.get(String(t || '').trim().toLowerCase());
           if (hit) { customer = hit; break; }
         }
       }

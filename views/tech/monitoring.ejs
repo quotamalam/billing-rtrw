@@ -297,7 +297,7 @@ function renderDevices(devices) {
 
   container.innerHTML = devices.map(d => {
     const isOn = d.status === 'online';
-    const title = d.customerName ? d.customerName : (d.tags.join(', ') || 'Tanpa Tag');
+    const title = d.customerName ? d.customerName : (d.tags.join(', ') || d.id || 'Tanpa Tag');
     const sub = d.customerName ? `${d.tags.join(', ') || 'Tanpa Tag'} | SN: ${d.serialNumber}` : `${d.model || 'ONU'} | SN: ${d.serialNumber}`;
     return `
       <div class="t-card mb-3 p-3" style="border-left: 4px solid ${isOn ? '#10b981' : '#ef4444'}">
@@ -338,16 +338,16 @@ function renderDevices(devices) {
         </div>
 
         <div class="d-flex gap-2">
-          <button class="btn btn-sm btn-outline-primary flex-fill" style="font-size: 11px;" onclick="openActionModal('${d.tags[0]}', 'ssid', '${d.ssid}')">
+          <button class="btn btn-sm btn-outline-primary flex-fill" style="font-size: 11px;" onclick="openActionModal('${(d.tags && d.tags[0]) || d.id}', 'ssid', '${d.ssid}')">
             <i class="bi bi-wifi"></i> SSID
           </button>
-          <button class="btn btn-sm btn-outline-primary flex-fill" style="font-size: 11px;" onclick="openActionModal('${d.tags[0]}', 'pass')">
+          <button class="btn btn-sm btn-outline-primary flex-fill" style="font-size: 11px;" onclick="openActionModal('${(d.tags && d.tags[0]) || d.id}', 'pass')">
             <i class="bi bi-key"></i> Pass
           </button>
           <button class="btn btn-sm btn-outline-success flex-fill" style="font-size: 11px;" onclick="openAddWanModal('${d.id}', '${d.acsServerId}', '${d.serialNumber}', '${d.manufacturer || ""}', '${d.model || ""}')">
             <i class="bi bi-gear-fill"></i> WAN
           </button>
-          <button class="btn btn-sm btn-outline-danger" style="font-size: 11px;" onclick="openActionModal('${d.tags[0]}', 'reboot')">
+          <button class="btn btn-sm btn-outline-danger" style="font-size: 11px;" onclick="openActionModal('${(d.tags && d.tags[0]) || d.id}', 'reboot')">
             <i class="bi bi-power"></i>
           </button>
         </div>

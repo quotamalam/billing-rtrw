@@ -731,9 +731,10 @@ function renderOfflineList(offlineDevices) {
   }
   el.innerHTML = offlineDevices.map(d => {
     const ago = d.lastInform ? timeSince(new Date(d.lastInform)) : I18N.never;
+    const label = (d.customerName && String(d.customerName).trim()) ? d.customerName : (d.tags.join(', ') || '-');
     return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div>
-        <div style="font-size:13px;font-weight:600">${d.tags.join(', ') || '-'}</div>
+        <div style="font-size:13px;font-weight:600">${label}</div>
         <div style="font-size:11px;color:var(--muted)">${d.serialNumber}</div>
       </div>
       <div style="text-align:right">
