@@ -255,34 +255,48 @@
       box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45), 0 2px 6px rgba(0,0,0,0.35);
     }
     .onu-marker-node.is-suspended .onu-marker-pin {
-      background: linear-gradient(135deg, #ef4444, #dc2626);
-      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45), 0 2px 6px rgba(0,0,0,0.35);
+      background: linear-gradient(135deg, #94a3b8, #64748b);
+      box-shadow: 0 0 0 2px rgba(100, 116, 139, 0.5), 0 2px 6px rgba(0,0,0,0.35);
     }
 
-    /* Warna marker mengikuti status PPPoE: online = hijau, offline = merah */
-    .onu-marker-node.is-online .onu-marker-pin {
-      background: linear-gradient(135deg, #10b981, #059669);
-      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.55), 0 2px 6px rgba(0,0,0,0.35);
-    }
-    .onu-marker-node.is-offline .onu-marker-pin {
-      background: linear-gradient(135deg, #ef4444, #dc2626);
-      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55), 0 2px 6px rgba(0,0,0,0.35);
-    }
-    /* Radar abu untuk pelanggan isolir/suspen (overlay, tetap terlihat di hijau/merah) */
-    .onu-marker-node.is-suspended .onu-marker-pin { position: relative; }
-    .onu-marker-node.is-suspended .onu-marker-pin::after {
+    /* Pin: aktif = hijau, suspen = abu */
+    .onu-marker-node .onu-marker-pin { position: relative; }
+    /* Radar: hijau bila PPPoE online, merah bila offline */
+    .onu-marker-node .onu-marker-pin::after {
       content: '';
       position: absolute;
-      inset: -4px;
+      inset: -5px;
       border-radius: 50%;
-      border: 2px solid rgba(148, 163, 184, 0.95);
-      box-shadow: 0 0 8px rgba(148, 163, 184, 0.65);
+      border: 2px solid rgba(148, 163, 184, 0.9);
+      box-shadow: 0 0 8px rgba(148, 163, 184, 0.55);
       animation: onuRadarPulse 1.6s ease-out infinite;
       pointer-events: none;
+    }
+    .onu-marker-node.is-online .onu-marker-pin::after {
+      border-color: rgba(16, 185, 129, 0.95);
+      box-shadow: 0 0 9px rgba(16, 185, 129, 0.75);
+    }
+    .onu-marker-node.is-offline .onu-marker-pin::after {
+      border-color: rgba(239, 68, 68, 0.95);
+      box-shadow: 0 0 9px rgba(239, 68, 68, 0.75);
     }
     @keyframes onuRadarPulse {
       0%   { transform: scale(0.65); opacity: 0.9; }
       100% { transform: scale(1.9);  opacity: 0; }
+    }
+    /* Logo silang untuk pelanggan isolir/suspen */
+    .onu-marker-node.is-suspended .onu-marker-pin::before {
+      content: '\2715';
+      position: absolute;
+      top: -7px; right: -7px;
+      width: 15px; height: 15px;
+      border-radius: 50%;
+      background: #334155;
+      color: #ffffff;
+      font-size: 9px; line-height: 15px; text-align: center; font-weight: 900;
+      border: 1.5px solid #ffffff;
+      z-index: 6;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
     
     /* Clean text label below pin with strong text-shadow outline */
@@ -424,6 +438,21 @@
     }
     .flowing-line {
       animation: flow 1s linear infinite;
+      stroke-linecap: round;
+    }
+    @keyframes lineBlink {
+      0%, 100% { opacity: 0.9; }
+      50% { opacity: 0.2; }
+    }
+    .blinking-line {
+      animation: lineBlink 1s ease-in-out infinite;
+      stroke-linecap: round;
+    }
+    .cable-cross-badge {
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #ef4444; color: #ffffff;
+      font-size: 11px; font-weight: 900; line-height: 16px; text-align: center;
+      border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
 
     /* Tabbed Data Panel (ONU & ODP) */
@@ -1057,11 +1086,11 @@
         }
 
         polyline = L.polyline(pathCoords, {
-          color: is_active ? '#3b82f6' : '#ef4444',
+          color: '#94a3b8',
           weight: 3,
-          opacity: 0.8,
-          dashArray: '10, 10',
-          className: 'flowing-line'
+          opacity: 0.85,
+          dashArray: '6, 8',
+          lineCap: 'round'
         }).addTo(map);
 
         polyline.on('click', (e) => {
@@ -1156,11 +1185,38 @@
       customers.forEach((cust) => {
         if (!(cust.lat && cust.lng)) return;
         const node = document.getElementById('onu-node-' + cust.id);
-        if (!node) return;
         const uname = String(cust.pppoe_username || '').trim().toLowerCase();
         const isOnline = !!uname && onlineSet.has(uname);
-        node.classList.toggle('is-online', isOnline);
-        node.classList.toggle('is-offline', !isOnline);
+
+        if (node) {
+          node.classList.toggle('is-online', isOnline);
+          node.classList.toggle('is-offline', !isOnline);
+        }
+
+        const entry = customerMap[cust.id];
+        if (entry && entry.polyline) {
+          const poly = entry.polyline;
+          const el = poly.getElement && poly.getElement();
+          if (isOnline) {
+            poly.setStyle({ color: '#10b981', dashArray: '2, 7', opacity: 0.95 });
+            if (el) { el.classList.add('flowing-line'); el.classList.remove('blinking-line'); }
+            if (entry.crossMarker) { map.removeLayer(entry.crossMarker); entry.crossMarker = null; }
+          } else {
+            poly.setStyle({ color: '#ef4444', dashArray: '7, 7', opacity: 0.9 });
+            if (el) { el.classList.add('blinking-line'); el.classList.remove('flowing-line'); }
+            if (!entry.crossMarker) {
+              let pts = poly.getLatLngs();
+              if (Array.isArray(pts[0])) pts = pts[0];
+              const mid = pts[Math.floor(pts.length / 2)] || pts[0];
+              if (mid) {
+                entry.crossMarker = L.marker(mid, {
+                  icon: L.divIcon({ className: 'cable-cross', html: '<div class="cable-cross-badge">\u2715</div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+                  interactive: false
+                }).addTo(map);
+              }
+            }
+          }
+        }
       });
     } catch (e) { /* diamkan */ }
   }
