@@ -258,6 +258,32 @@
       background: linear-gradient(135deg, #ef4444, #dc2626);
       box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.45), 0 2px 6px rgba(0,0,0,0.35);
     }
+
+    /* Warna marker mengikuti status PPPoE: online = hijau, offline = merah */
+    .onu-marker-node.is-online .onu-marker-pin {
+      background: linear-gradient(135deg, #10b981, #059669);
+      box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.55), 0 2px 6px rgba(0,0,0,0.35);
+    }
+    .onu-marker-node.is-offline .onu-marker-pin {
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.55), 0 2px 6px rgba(0,0,0,0.35);
+    }
+    /* Radar abu untuk pelanggan isolir/suspen (overlay, tetap terlihat di hijau/merah) */
+    .onu-marker-node.is-suspended .onu-marker-pin { position: relative; }
+    .onu-marker-node.is-suspended .onu-marker-pin::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      border: 2px solid rgba(148, 163, 184, 0.95);
+      box-shadow: 0 0 8px rgba(148, 163, 184, 0.65);
+      animation: onuRadarPulse 1.6s ease-out infinite;
+      pointer-events: none;
+    }
+    @keyframes onuRadarPulse {
+      0%   { transform: scale(0.65); opacity: 0.9; }
+      100% { transform: scale(1.9);  opacity: 0; }
+    }
     
     /* Clean text label below pin with strong text-shadow outline */
     .onu-marker-label {
@@ -1119,6 +1145,27 @@
       };
     }
   });
+
+  // ─── LIVE PPPoE STATUS (warna marker + radar isolir) ───
+  async function refreshOnuLiveStatus() {
+    try {
+      const res = await fetch('/admin/api/customers/live-sessions', { cache: 'no-store' });
+      const data = await res.json();
+      if (!data || !data.ok) return;
+      const onlineSet = new Set(Object.keys(data.sessions || {}).map((k) => String(k || '').toLowerCase()));
+      customers.forEach((cust) => {
+        if (!(cust.lat && cust.lng)) return;
+        const node = document.getElementById('onu-node-' + cust.id);
+        if (!node) return;
+        const uname = String(cust.pppoe_username || '').trim().toLowerCase();
+        const isOnline = !!uname && onlineSet.has(uname);
+        node.classList.toggle('is-online', isOnline);
+        node.classList.toggle('is-offline', !isOnline);
+      });
+    } catch (e) { /* diamkan */ }
+  }
+  refreshOnuLiveStatus();
+  setInterval(refreshOnuLiveStatus, 60000);
 
   // ─── SEARCH & AUTOCOMPLETE LOGIC ──────────────────────────────────────────
   const searchInput = document.getElementById('mapGlobalSearch');
