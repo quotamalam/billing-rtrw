@@ -1058,6 +1058,30 @@
       </div>
     </div>
 
+    <!-- SPEED TEST (OpenSpeedTest langsung ke server) -->
+    <div class="glass-card mb-4" id="speedtest-section">
+      <div class="glass-header">
+        <h5><i class="bi bi-speedometer2 me-2 text-success"></i> Speed Test</h5>
+        <span class="badge bg-success text-dark" style="border-radius:8px;">Kecepatan Internet</span>
+      </div>
+      <div class="p-3 p-md-4">
+        <p class="small mb-3" style="color:#cbd5e1;">Ukur kecepatan <strong>download</strong>, <strong>upload</strong>, <strong>ping</strong>, dan <strong>jitter</strong> langsung ke server kami.</p>
+        <button type="button" class="btn fw-bold" onclick="openSpeedTest()" style="background:linear-gradient(135deg,#10b981,#059669);border:none;border-radius:10px;color:#fff;padding:12px 20px;">
+          <i class="bi bi-play-fill me-1"></i> Mulai Speed Test
+        </button>
+      </div>
+    </div>
+    <script>
+function speedtestDirectUrl() {
+  var host = window.location.hostname;
+  var https = window.location.protocol === 'https:';
+  return (https ? 'https://' : 'http://') + host + (https ? ':18443' : ':18080');
+}
+function openSpeedTest() {
+  window.open(speedtestDirectUrl(), '_blank', 'noopener');
+}
+    </script>
+
     <!-- INVOICE & COMPLAINT TIKET SECTIONS -->
     <div class="accordion customer-accordion mb-4" id="customerAccordion">
       <!-- TAGIHAN ACCORDION -->
