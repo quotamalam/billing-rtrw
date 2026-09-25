@@ -454,6 +454,13 @@
       font-size: 11px; font-weight: 900; line-height: 16px; text-align: center;
       border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
+    .cable-moving-dot {
+      fill: #ffffff;
+      stroke: #10b981;
+      stroke-width: 2;
+      filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.95));
+      pointer-events: none;
+    }
 
     /* Tabbed Data Panel (ONU & ODP) */
     .data-tabs-panel {
@@ -1088,8 +1095,7 @@
         polyline = L.polyline(pathCoords, {
           color: '#94a3b8',
           weight: 3,
-          opacity: 0.85,
-          dashArray: '6, 8',
+          opacity: 0.9,
           lineCap: 'round'
         }).addTo(map);
 
@@ -1176,6 +1182,40 @@
   });
 
   // ─── LIVE PPPoE STATUS (warna marker + radar isolir) ───
+  function removeMovingDot(custId) {
+    const entry = customerMap[custId];
+    if (entry && entry.movingDot) {
+      try { entry.movingDot.remove(); } catch (e) {}
+      entry.movingDot = null;
+    }
+  }
+
+  // Bulatan kecil bergerak mengikuti alur kabel (dipakai saat PPPoE online)
+  function ensureMovingDot(custId, poly) {
+    const entry = customerMap[custId];
+    if (!entry) return;
+    const pathEl = poly.getElement && poly.getElement();
+    if (!pathEl || !pathEl.ownerSVGElement) return;
+    const pid = 'cable-path-' + custId;
+    if (pathEl.id !== pid) pathEl.id = pid;
+    if (entry.movingDot && entry.movingDot.ownerSVGElement === pathEl.ownerSVGElement) return;
+    removeMovingDot(custId);
+    const ns = 'http://www.w3.org/2000/svg';
+    const circle = document.createElementNS(ns, 'circle');
+    circle.setAttribute('r', '4.5');
+    circle.setAttribute('class', 'cable-moving-dot');
+    const am = document.createElementNS(ns, 'animateMotion');
+    am.setAttribute('dur', '2.4s');
+    am.setAttribute('repeatCount', 'indefinite');
+    const mpath = document.createElementNS(ns, 'mpath');
+    mpath.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + pid);
+    mpath.setAttribute('href', '#' + pid);
+    am.appendChild(mpath);
+    circle.appendChild(am);
+    pathEl.ownerSVGElement.appendChild(circle);
+    entry.movingDot = circle;
+  }
+
   async function refreshOnuLiveStatus() {
     try {
       const res = await fetch('/admin/api/customers/live-sessions', { cache: 'no-store' });
@@ -1197,24 +1237,15 @@
         if (entry && entry.polyline) {
           const poly = entry.polyline;
           const el = poly.getElement && poly.getElement();
+          entry.isOnline = isOnline;
           if (isOnline) {
-            poly.setStyle({ color: '#10b981', dashArray: '2, 7', opacity: 0.95 });
-            if (el) { el.classList.add('flowing-line'); el.classList.remove('blinking-line'); }
-            if (entry.crossMarker) { map.removeLayer(entry.crossMarker); entry.crossMarker = null; }
+            poly.setStyle({ color: '#10b981', dashArray: null, opacity: 0.95 });
+            if (el) el.classList.remove('blinking-line');
+            ensureMovingDot(cust.id, poly);
           } else {
-            poly.setStyle({ color: '#ef4444', dashArray: '7, 7', opacity: 0.9 });
-            if (el) { el.classList.add('blinking-line'); el.classList.remove('flowing-line'); }
-            if (!entry.crossMarker) {
-              let pts = poly.getLatLngs();
-              if (Array.isArray(pts[0])) pts = pts[0];
-              const mid = pts[Math.floor(pts.length / 2)] || pts[0];
-              if (mid) {
-                entry.crossMarker = L.marker(mid, {
-                  icon: L.divIcon({ className: 'cable-cross', html: '<div class="cable-cross-badge">\u2715</div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
-                  interactive: false
-                }).addTo(map);
-              }
-            }
+            poly.setStyle({ color: '#ef4444', dashArray: null, opacity: 0.9 });
+            if (el) el.classList.add('blinking-line');
+            removeMovingDot(cust.id);
           }
         }
       });
