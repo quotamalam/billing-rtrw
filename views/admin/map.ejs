@@ -463,13 +463,7 @@
       font-size: 11px; font-weight: 900; line-height: 16px; text-align: center;
       border: 2px solid #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.5);
     }
-    .cable-moving-dot {
-      fill: #ffffff;
-      stroke: #10b981;
-      stroke-width: 2;
-      filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.95));
-      pointer-events: none;
-    }
+    .cable-moving-dot { pointer-events: none; }
 
     /* Tabbed Data Panel (ONU & ODP) */
     .data-tabs-panel {
@@ -1199,7 +1193,54 @@
     }
   }
 
-  // Bulatan kecil bergerak mengikuti alur kabel (dipakai saat PPPoE online)
+  function removeCableCross(custId) {
+    const entry = customerMap[custId];
+    if (entry && entry.crossMarker) {
+      map.removeLayer(entry.crossMarker);
+      entry.crossMarker = null;
+    }
+  }
+
+  // Tanda silang merah di tengah garis (dipakai saat PPPoE offline)
+  function ensureCableCross(custId, poly) {
+    const entry = customerMap[custId];
+    if (!entry || entry.crossMarker) return;
+    let pts = poly.getLatLngs();
+    if (Array.isArray(pts[0])) pts = pts[0];
+    const mid = pts[Math.floor(pts.length / 2)] || pts[0];
+    if (!mid) return;
+    entry.crossMarker = L.marker(mid, {
+      icon: L.divIcon({ className: 'cable-cross', html: '<div class="cable-cross-badge">\u2715</div>', iconSize: [16, 16], iconAnchor: [8, 8] }),
+      interactive: false
+    }).addTo(map);
+  }
+
+  // Satu titik SVG yang bergerak mengikuti path (mpath)
+  function svgDot(pid, r, fill, opacity, durSec, beginSec, glow) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const c = document.createElementNS(ns, 'circle');
+    c.setAttribute('r', String(r));
+    c.setAttribute('fill', fill);
+    if (opacity != null) c.setAttribute('opacity', String(opacity));
+    if (glow) {
+      c.setAttribute('stroke', '#10b981');
+      c.setAttribute('stroke-width', '2');
+      c.setAttribute('filter', 'drop-shadow(0 0 6px rgba(16,185,129,0.95))');
+    }
+    c.setAttribute('class', 'cable-moving-dot');
+    const am = document.createElementNS(ns, 'animateMotion');
+    am.setAttribute('dur', durSec + 's');
+    if (beginSec) am.setAttribute('begin', beginSec + 's');
+    am.setAttribute('repeatCount', 'indefinite');
+    const mp = document.createElementNS(ns, 'mpath');
+    mp.setAttribute('href', '#' + pid);
+    mp.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + pid);
+    am.appendChild(mp);
+    c.appendChild(am);
+    return c;
+  }
+
+  // Rombongan titik bergerak (ekor + inti) - kecepatan menyesuaikan panjang garis
   function ensureMovingDot(custId, poly) {
     const entry = customerMap[custId];
     if (!entry) return;
@@ -1209,20 +1250,17 @@
     if (pathEl.id !== pid) pathEl.id = pid;
     if (entry.movingDot && entry.movingDot.ownerSVGElement === pathEl.ownerSVGElement) return;
     removeMovingDot(custId);
+    let len = 0;
+    try { len = pathEl.getTotalLength ? pathEl.getTotalLength() : 0; } catch (e) {}
+    const dur = Math.min(6, Math.max(1.4, len / 110));
     const ns = 'http://www.w3.org/2000/svg';
-    const circle = document.createElementNS(ns, 'circle');
-    circle.setAttribute('r', '4.5');
-    circle.setAttribute('class', 'cable-moving-dot');
-    const am = document.createElementNS(ns, 'animateMotion');
-    am.setAttribute('dur', '2.4s');
-    am.setAttribute('repeatCount', 'indefinite');
-    const mpath = document.createElementNS(ns, 'mpath');
-    mpath.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + pid);
-    mpath.setAttribute('href', '#' + pid);
-    am.appendChild(mpath);
-    circle.appendChild(am);
-    pathEl.ownerSVGElement.appendChild(circle);
-    entry.movingDot = circle;
+    const g = document.createElementNS(ns, 'g');
+    g.setAttribute('class', 'cable-moving-group');
+    g.appendChild(svgDot(pid, 3, '#10b981', 0.32, dur, -(dur * 0.34), false));
+    g.appendChild(svgDot(pid, 3.6, '#34d399', 0.55, dur, -(dur * 0.17), false));
+    g.appendChild(svgDot(pid, 4.8, '#ffffff', 1, dur, 0, true));
+    pathEl.ownerSVGElement.appendChild(g);
+    entry.movingDot = g;
   }
 
   async function refreshOnuLiveStatus() {
@@ -1250,11 +1288,13 @@
           if (isOnline) {
             poly.setStyle({ color: '#10b981', dashArray: null, opacity: 0.95 });
             if (el) el.classList.remove('blinking-line');
+            removeCableCross(cust.id);
             ensureMovingDot(cust.id, poly);
           } else {
             poly.setStyle({ color: '#ef4444', dashArray: null, opacity: 0.9 });
             if (el) el.classList.add('blinking-line');
             removeMovingDot(cust.id);
+            ensureCableCross(cust.id, poly);
           }
         }
       });
