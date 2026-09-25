@@ -1067,6 +1067,7 @@
   // Registries for quick search, focus, and filtering
   const odpMap = {}; // odpId -> { marker, data, coord }
   const customerMap = {}; // custId -> { marker, data, polyline }
+  const liveSessionIps = {}; // username (lower) -> ip pppoe
 
   // 1. Render ODP Markers (Clean icon & floating text outline)
   odps.forEach(odp => {
@@ -1180,6 +1181,7 @@
 
           <div class="cp-meta">
             <div class="cp-meta-item"><i class="bi bi-router"></i><span>PPPoE: <strong>${escapeHtml(cust.pppoe_username || '-')}</strong></span></div>
+            <div class="cp-meta-item"><i class="bi bi-hdd-network"></i><span>IP PPPoE: <strong id="popup-ip-${cust.id}">-</strong></span><button type="button" class="cp-copy-ip" data-target="popup-ip-${cust.id}" title="Salin IP" style="margin-left:6px;padding:2px 7px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:inherit;cursor:pointer"><i class="bi bi-clipboard"></i></button></div>
             <div class="cp-meta-item"><i class="bi bi-tag"></i><span>Tag/SN: <strong>${escapeHtml(cust.genieacs_tag || '-')}</strong></span></div>
             <div class="cp-meta-item"><i class="bi bi-box-seam"></i><span>ODP: <strong>${escapeHtml(cust.odp_name || 'Tanpa ODP')}</strong></span></div>
             <div class="cp-meta-item"><i class="bi bi-telephone"></i><span>${escapeHtml(cust.phone || '-')}</span></div>
@@ -1210,7 +1212,7 @@
         </div>
       `);
 
-      marker.on('popupopen', () => startCustomerTrafficPopup(cust.id));
+      marker.on('popupopen', () => { startCustomerTrafficPopup(cust.id); fillPopupIp(cust); });
       marker.on('popupclose', () => stopCustomerTrafficPopup(cust.id));
 
       customerMap[cust.id] = {
@@ -1222,6 +1224,40 @@
   });
 
   // ─── LIVE PPPoE STATUS (warna marker + radar isolir) ───
+  function fillPopupIp(cust) {
+    const el = document.getElementById('popup-ip-' + cust.id);
+    if (!el) return;
+    const uname = String(cust.pppoe_username || '').trim().toLowerCase();
+    const ip = (uname && liveSessionIps[uname]) || cust.ip_address || '';
+    el.textContent = ip || '-';
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  document.addEventListener('click', function (ev) {
+    const btn = ev.target && ev.target.closest ? ev.target.closest('.cp-copy-ip') : null;
+    if (!btn) return;
+    ev.preventDefault(); ev.stopPropagation();
+    const el = document.getElementById(btn.getAttribute('data-target'));
+    const val = el ? String(el.textContent || '').trim() : '';
+    if (!val || val === '-') return;
+    copyText(val);
+    btn.innerHTML = '<i class="bi bi-check2"></i>';
+    setTimeout(function () { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1200);
+  }, true);
+
   let _dotRaf = null;
   let _dotLast = 0;
 
@@ -1308,6 +1344,11 @@
       const data = await res.json();
       if (!data || !data.ok) return;
       const onlineSet = new Set(Object.keys(data.sessions || {}).map((k) => String(k || '').toLowerCase()));
+      Object.keys(liveSessionIps).forEach((k) => { delete liveSessionIps[k]; });
+      Object.keys(data.sessions || {}).forEach((k) => {
+        const ses = data.sessions[k];
+        if (ses && ses.ip) liveSessionIps[String(k).toLowerCase()] = ses.ip;
+      });
       customers.forEach((cust) => {
         if (!(cust.lat && cust.lng)) return;
         const node = document.getElementById('onu-node-' + cust.id);
@@ -1318,6 +1359,7 @@
           node.classList.toggle('is-online', isOnline);
           node.classList.toggle('is-offline', !isOnline);
         }
+        fillPopupIp(cust);
 
         const entry = customerMap[cust.id];
         if (entry && entry.polyline) {
