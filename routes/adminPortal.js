@@ -4651,11 +4651,22 @@ router.get('/api/devices', requireAdmin, async (req, res) => {
     const mikrotikService = require('../services/mikrotikService');
     const activeSessionsMap = await mikrotikService.getActivePppoeSessionsMap().catch(() => new Map());
 
+    const allCustomers = customerSvc.getAllCustomers() || [];
+    const custByTag = new Map();
+    const custByPppoe = new Map();
+    for (const c of allCustomers) {
+      if (c.genieacs_tag) custByTag.set(String(c.genieacs_tag).trim().toLowerCase(), c);
+      if (c.pppoe_username) custByPppoe.set(String(c.pppoe_username).trim().toLowerCase(), c);
+    }
     let devices = result.devices.map(d => {
       const pppoeUser = customerDevice.extractPppoeUser(d);
       const isPppoeActive = pppoeUser && pppoeUser !== 'N/A' && pppoeUser !== '-' && activeSessionsMap.has(pppoeUser.toLowerCase());
       const mapped = customerDevice.mapDeviceData(d, d._tags?.[0] || d._id, isPppoeActive) || {};
       const tagsArr = Array.isArray(d._tags) ? d._tags.filter(Boolean).map(String) : [];
+      const devKey = String(d._id || '').trim().toLowerCase();
+      let cust = custByTag.get(devKey) || null;
+      if (!cust && tagsArr.length) cust = custByTag.get(String(tagsArr[0]).trim().toLowerCase()) || null;
+      if (!cust && pppoeUser && pppoeUser !== 'N/A' && pppoeUser !== '-') cust = custByPppoe.get(String(pppoeUser).trim().toLowerCase()) || null;
       return {
         id: String(d._id || ''),
         tags: tagsArr,
@@ -4679,7 +4690,9 @@ router.get('/api/devices', requireAdmin, async (req, res) => {
         userConnected: mapped.totalAssociations ?? '-',
         ssid: String(mapped.ssid || '-'),
         acs_server_id: d._acs_server_id || 'legacy',
-        acs_server_name: d._acs_server_name || 'Default ACS'
+        acs_server_name: d._acs_server_name || 'Default ACS',
+        customerName: cust ? String(cust.name || '') : '',
+        customerUsername: cust ? String(cust.pppoe_username || '') : ''
       };
     });
     if (search) { 

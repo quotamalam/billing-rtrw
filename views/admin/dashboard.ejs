@@ -640,7 +640,8 @@ async function loadDevices() {
       }
       tbody.innerHTML = devicesData.map((d, i) => {
         const isOn = d.status === 'online';
-        const tagStr = d.tags.join(', ') || '-';
+        const custName = d.customerName && String(d.customerName).trim();
+        const tagStr = custName ? custName : (d.tags.join(', ') || '-');
         const lastInformStr = d.lastInform ? new Date(d.lastInform).toLocaleString('id-ID', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : '-';
         const lastSyncStr = d.lastSync ? new Date(d.lastSync).toLocaleString('id-ID', {day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}) : (d.lastSyncLabel || '-');
         const syncBadge = d.syncInProgress
