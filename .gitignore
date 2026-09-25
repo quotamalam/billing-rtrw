@@ -68,3 +68,8 @@ license.key
 .hwid
 auth_info_baileys/
 data/wwebjs_auth/
+
+# Runtime backups & audit artifacts
+*.bak
+*.bak-*
+unmatched_onus_*.txt
