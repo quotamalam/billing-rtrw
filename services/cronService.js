@@ -702,6 +702,14 @@ function startCronJobs() {
     if (!enabled) return;
     const onuSyncService = require('./onuSyncService');
     const oltService = require('./oltService');
+    if (getSetting('customer_mac_autofill_enabled', true)) {
+      try {
+        const macSummary = await onuSyncService.syncCustomerMacFromPppoe();
+        logger.info(`[CRON] Auto-isi mac_address: total=${macSummary.total}, diisi=${macSummary.filled}, sudah-ada=${macSummary.skipped}, tanpa-pelanggan=${macSummary.noCustomer}`);
+      } catch (e) {
+        logger.error(`[CRON] Gagal auto-isi mac_address: ${e.message}`);
+      }
+    }
     logger.info('[CRON] Menjalankan sinkronisasi nama ONU di OLT');
     try {
       const olts = (oltService.getAllOlts() || []).filter((o) => o.is_active === 1 || o.is_active === true);

@@ -17,6 +17,61 @@ function normalizeKey(s) {
 }
 
 /**
+ * Normalisasi MAC menjadi format AA:BB:CC:DD:EE:FF. Kembalikan null bila bukan 12 hex.
+ */
+function formatMac(raw) {
+  const hex = String(raw || '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  if (hex.length !== 12) return null;
+  return hex.match(/.{2}/g).join(':');
+}
+
+/**
+ * Isi otomatis kolom mac_address pelanggan dari caller-id sesi PPPoE aktif.
+ * Hanya mengisi bila mac_address pelanggan masih kosong (tidak menimpa data manual).
+ * @param {{dryRun?: boolean}} opts
+ */
+async function syncCustomerMacFromPppoe(opts = {}) {
+  const dryRun = !!opts.dryRun;
+  const sessions = await mikrotikService.getActivePppoeSessionsMap();
+
+  const custs = db.prepare('SELECT id, name, pppoe_username, mac_address FROM customers').all() || [];
+  const byUser = new Map();
+  for (const c of custs) {
+    if (c.pppoe_username) byUser.set(String(c.pppoe_username).trim().toLowerCase(), c);
+  }
+
+  const stmt = db.prepare('UPDATE customers SET mac_address = ? WHERE id = ?');
+  const summary = { total: sessions.size, filled: 0, skipped: 0, noCustomer: 0, invalid: 0, errors: [] };
+
+  for (const [username, s] of sessions.entries()) {
+    const cust = byUser.get(username);
+    if (!cust) {
+      summary.noCustomer++;
+      continue;
+    }
+    if (cust.mac_address && String(cust.mac_address).trim()) {
+      summary.skipped++;
+      continue;
+    }
+    const mac = formatMac(s.callerId);
+    if (!mac) {
+      summary.invalid++;
+      continue;
+    }
+    try {
+      if (!dryRun) stmt.run(mac, cust.id);
+      summary.filled++;
+      logger.info(`[SyncMAC] ${dryRun ? '[DRY-RUN] isi' : 'isi'} mac_address ${cust.name} => ${mac}`);
+    } catch (err) {
+      summary.errors.push({ customer: cust.name, error: err.message });
+      logger.error(`[SyncMAC] Gagal isi mac_address ${cust.name}: ${err.message}`);
+    }
+  }
+
+  return summary;
+}
+
+/**
  * Tentukan target nama untuk satu ONU.
  * @returns {{customer: object|null, target: string|null, via: string|null}}
  */
@@ -127,4 +182,4 @@ async function syncAllOnuNames(opts = {}) {
   return results;
 }
 
-module.exports = { syncOnuCustomerNames, syncAllOnuNames };
+module.exports = { syncOnuCustomerNames, syncAllOnuNames, syncCustomerMacFromPppoe, formatMac };
